@@ -1,0 +1,37 @@
+name: Build Plugin
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Find and unzip the newest zip (if any)
+        run: |
+          NEWEST=$(ls -t *.zip 2>/dev/null | head -1 || true)
+          if [ -n "$NEWEST" ]; then
+            echo "Building from zip: $NEWEST"
+            rm -rf _build && mkdir _build
+            unzip -o "$NEWEST" -d _build
+            echo "BUILD_DIR=$(dirname "$(find _build -name pom.xml | head -1)")" >> "$GITHUB_ENV"
+          else
+            echo "No zip found — building repo source directly."
+            echo "BUILD_DIR=$(dirname "$(find . -name pom.xml -not -path './_build/*' | head -1)")" >> "$GITHUB_ENV"
+          fi
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build with Maven
+        run: |
+          echo "Project dir: $BUILD_DIR"
+          cd "$BUILD_DIR"
+          mvn -B clean package
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-jar
+          path: '${{ env.BUILD_DIR }}/target/*.jar'
+          if-no-files-found: error
